@@ -1,0 +1,15 @@
+[Unit]
+Description=My M3U8 Downloader
+After=network.target
+
+[Service]
+ExecStart=you app path
+Environment="GIN_MODE=release"
+User=you user name
+Group=you user gtoup
+Restart=always
+RestartSec=3
+StartLimitInterval=0
+
+[Install]
+WantedBy=multi-user.target
