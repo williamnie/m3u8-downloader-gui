@@ -1,0 +1,109 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Go
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
+
+    - name: Build Linux
+      env:
+        GOOS: linux
+        GOARCH: amd64
+      run: go build -o output/linux-amd64
+      
+    - name: Build Linux ARM
+      env:
+        GOOS: linux
+        GOARCH: arm
+        GOARM: 7
+      run: go build -o output/linux-arm
+
+    - name: Build Windows
+      env:
+        GOOS: windows
+        GOARCH: amd64
+      run: go build -o output/windows-amd64.exe
+
+    - name: Build macOS
+      env:
+        GOOS: darwin
+        GOARCH: amd64
+      run: go build -o output/darwin-amd64
+
+    - name: Archive production artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: artifacts
+        path: output
+
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: artifacts
+
+      - name: Create Release
+        id: cr
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Linux Asset
+        id: upload-linux-asset 
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.cr.outputs.upload_url }} 
+          asset_path: ./artifacts/linux-amd64
+          asset_name: linux-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Linux ARM Asset
+        id: upload-linux-arm-asset 
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.cr.outputs.upload_url }} 
+          asset_path: ./artifacts/linux-arm
+          asset_name: linux-arm
+          asset_content_type: application/octet-stream
+
+      - name: Upload Windows Asset
+        id: upload-windows-asset 
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.cr.outputs.upload_url }} 
+          asset_path: ./artifacts/windows-amd64.exe
+          asset_name: windows-amd64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS Asset
+        id: upload-darwin-asset 
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.cr.outputs.upload_url }} 
+          asset_path: ./artifacts/darwin-amd64
+          asset_name: darwin-amd64
+          asset_content_type: application/octet-stream
