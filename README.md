@@ -14,13 +14,6 @@ fork自开源项目 [m3u8-downloader](https://github.com/llychao/m3u8-downloader
 1. fork下猫爪的项目，改动一下，支持从猫爪一键发送到本下载工具
 
 
-## 下载
-
-已经编译好的平台有： [点击下载](https://github.com/llychao/m3u8-downloader/releases)
-
-- windows/amd64
-- linux/amd64
-- darwin/amd64
 
 ## 用法
 
