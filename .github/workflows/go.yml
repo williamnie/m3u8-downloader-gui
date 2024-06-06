@@ -60,6 +60,9 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: artifacts
+          
+      - name: List files in artifacts directory
+        run: ls -R artifacts
 
       - name: Create Release
         id: cr
