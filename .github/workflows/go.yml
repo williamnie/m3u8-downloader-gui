@@ -57,13 +57,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v2
+        uses: softprops/action-gh-release@v1
         with:
           name: artifacts
 
       - name: Create Release
         id: cr
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -74,7 +74,7 @@ jobs:
 
       - name: Upload Linux Asset
         id: upload-linux-asset 
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-artifact@v2
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
           asset_path: ./artifacts/linux-amd64
@@ -83,7 +83,7 @@ jobs:
 
       - name: Upload Linux ARM Asset
         id: upload-linux-arm-asset 
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-artifact@v2
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
           asset_path: ./artifacts/linux-arm
@@ -92,7 +92,7 @@ jobs:
 
       - name: Upload Windows Asset
         id: upload-windows-asset 
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-artifact@v2
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
           asset_path: ./artifacts/windows-amd64.exe
@@ -101,7 +101,7 @@ jobs:
 
       - name: Upload macOS Asset
         id: upload-darwin-asset 
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-artifact@v2
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
           asset_path: ./artifacts/darwin-amd64
