@@ -80,7 +80,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
-          asset_path: ./artifacts/linux-amd64
+          asset_path: ./linux-amd64
           asset_name: linux-amd64
           asset_content_type: application/octet-stream
 
@@ -89,7 +89,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
-          asset_path: ./artifacts/linux-arm
+          asset_path: ./linux-arm
           asset_name: linux-arm
           asset_content_type: application/octet-stream
 
@@ -98,7 +98,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
-          asset_path: ./artifacts/windows-amd64.exe
+          asset_path: ./windows-amd64.exe
           asset_name: windows-amd64.exe
           asset_content_type: application/octet-stream
 
@@ -107,6 +107,6 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
-          asset_path: ./artifacts/darwin-amd64
+          asset_path: ./darwin-amd64
           asset_name: darwin-amd64
           asset_content_type: application/octet-stream
