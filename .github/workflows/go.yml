@@ -59,9 +59,6 @@ jobs:
           name: artifacts
           path: output
 
-      - name: List downloaded files
-        run: ls -R output
-
       - name: Create Release
         id: cr
         uses: actions/create-release@v1
@@ -73,6 +70,9 @@ jobs:
           draft: false
           prerelease: false
 
+      - name: Debug GITHUB_TOKEN
+        run: echo ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload Linux Asset
         id: upload-linux-asset 
         uses: actions/upload-release-asset@v1
@@ -81,6 +81,8 @@ jobs:
           asset_path: output/linux-amd64
           asset_name: linux-amd64
           asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Linux ARM Asset
         id: upload-linux-arm-asset 
@@ -90,6 +92,8 @@ jobs:
           asset_path: output/linux-arm
           asset_name: linux-arm
           asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows Asset
         id: upload-windows-asset 
@@ -99,6 +103,8 @@ jobs:
           asset_path: output/windows-amd64.exe
           asset_name: windows-amd64.exe
           asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload macOS Asset
         id: upload-darwin-asset 
@@ -108,3 +114,5 @@ jobs:
           asset_path: output/darwin-amd64
           asset_name: darwin-amd64
           asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
