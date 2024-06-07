@@ -23,7 +23,7 @@ jobs:
         GOOS: linux
         GOARCH: amd64
       run: go build -o output/linux-amd64
-      
+
     - name: Build Linux ARM
       env:
         GOOS: linux
@@ -57,6 +57,7 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: artifacts
+          path: output
 
       - name: List downloaded files
         run: ls -R output
