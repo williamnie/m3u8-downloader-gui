@@ -29,7 +29,7 @@ jobs:
         GOOS: linux
         GOARCH: arm
         GOARM: 7
-      run: go build -o output/m3u8-linux-arm-v7
+      run: go build -o output/m3u8-linux-armV7
 
     - name: Build Windows
       env:
@@ -78,8 +78,8 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
-          asset_path: output/linux-amd64
-          asset_name: linux-amd64
+          asset_path: output/m3u8-linux-amd64
+          asset_name: m3u8-linux-amd64
           asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -89,8 +89,8 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
-          asset_path: output/linux-arm
-          asset_name: linux-arm
+          asset_path: output/m3u8-linux-armV7
+          asset_name: m3u8-linux-armV7
           asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -100,8 +100,8 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
-          asset_path: output/windows-amd64.exe
-          asset_name: windows-amd64.exe
+          asset_path: output/m3u8-windows-amd64.exe
+          asset_name: m3u8-windows-amd64.exe
           asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -111,8 +111,8 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.cr.outputs.upload_url }} 
-          asset_path: output/darwin-amd64
-          asset_name: darwin-amd64
+          asset_path: output/m3u8-darwin-amd64
+          asset_name: m3u8-darwin-amd64
           asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
