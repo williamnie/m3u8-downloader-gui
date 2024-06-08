@@ -22,26 +22,26 @@ jobs:
       env:
         GOOS: linux
         GOARCH: amd64
-      run: go build -o output/linux-amd64
+      run: go build -o output/m3u8-linux-amd64
 
     - name: Build Linux ARM
       env:
         GOOS: linux
         GOARCH: arm
         GOARM: 7
-      run: go build -o output/linux-arm
+      run: go build -o output/m3u8-linux-arm-v7
 
     - name: Build Windows
       env:
         GOOS: windows
         GOARCH: amd64
-      run: go build -o output/windows-amd64.exe
+      run: go build -o output/m3u8-windows-amd64.exe
 
     - name: Build macOS
       env:
         GOOS: darwin
         GOARCH: amd64
-      run: go build -o output/darwin-amd64
+      run: go build -o output/m3u8-darwin-amd64
 
     - name: Archive production artifacts
       uses: actions/upload-artifact@v2

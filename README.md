@@ -8,11 +8,11 @@ fork自开源项目 [m3u8-downloader](https://github.com/llychao/m3u8-downloader
 
 1. 支持下载多层m3u8地址（目前只测试了二层只有一个链接的）
 2. 支持GUI，有个简单的页面，方便直接添加任务
-3. 支持自定义端口，默认启动在10000端口上
+3. 支持自定义端口，默认启动在10000端口上，如果想自定义端口启动，可在后面加 -port=端口号
 
 ## TODO
-1. fork下猫爪的项目，改动一下，支持从猫爪一键发送到本下载工具
 
+1. fork下猫爪的项目，改动一下，支持从猫爪一键发送到本下载工具
 
 
 ## 用法
@@ -22,6 +22,10 @@ fork自开源项目 [m3u8-downloader](https://github.com/llychao/m3u8-downloader
 ```bash
 自己编译：go build -o main.go
 ```
+
+### 下载地址
+
+[Release](https://github.com/williamnie/m3u8-downloader-gui/releases)
 
 
 ## 部署说明
