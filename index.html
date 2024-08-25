@@ -18,12 +18,13 @@
         }
 
         .container {
+            position: relative;
             background-color: #fff;
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
             width: 1000px;
-            height: 768px;
+            height: 830px;
             box-sizing: border-box;
             margin-bottom: 20px;
             display: flex;
@@ -58,18 +59,29 @@
         }
 
         button {
-            width: calc(100% - 16px);
-            padding: 10px;
             background-color: #28a745;
             border: none;
             border-radius: 5px;
             color: white;
-            font-size: 16px;
             cursor: pointer;
         }
 
-        button:hover {
+        #download {
+            width: calc(100% - 16px);
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        #download:hover {
             background-color: #218838;
+        }
+
+        #playlist-select {
+            padding: 0 8px;
+        }
+
+        #retry {
+            margin-left: 20px;
         }
 
         .message {
@@ -79,6 +91,7 @@
         }
 
         #tasks {
+            width: 550px;
             padding: 10px;
             height: calc(100% - 55px);
             overflow-y: scroll;
@@ -86,7 +99,7 @@
 
         .form {
             width: 400px;
-
+            flex-shrink: 0;
         }
 
         .task {
@@ -123,6 +136,13 @@
         span {
             display: inline-block;
             width: 50%;
+        }
+
+        .clearList {
+            position: absolute;
+            top: 15px;
+            right: 10px;
+            background-color: #d9534f;
         }
 
         .message-box {
@@ -195,18 +215,34 @@
                 <label for="savePath">文件保存的绝对路径 (默认为当前路径)</label>
                 <input type="text" id="savePath">
             </div>
+            <div class="form-group">
+                <label for="referer">自定义Referer</label>
+                <input type="text" id="referer">
+            </div>
 
             <div class="form-group">
                 <label for="threads">下载线程数 (默认24)</label>
                 <input type="number" id="threads" value="24">
             </div>
+
             <div class="form-group">
+                <label for="threads">下载线程数 (默认24)</label>
+                <input type="number" id="threads" value="24">
+            </div>
+
+            <div class="form-group">
+                <label for="proxy">配置代理(此配置默认会记住并带到下次请求)</label>
+                <input type="text" id="proxy" value="" placeholder="[http://][User]:[Password]@[Server]:[Port]">
+            </div>
+
+
+            <!-- <div class="form-group">
                 <label for="hostType">Host Type</label>
                 <select id="hostType">
                     <option value="v1">v1</option>
                     <option value="v2">v2</option>
                 </select>
-            </div>
+            </div> -->
 
             <div class="form-group">
                 <label for="cookie">自定义请求 Cookie</label>
@@ -219,15 +255,19 @@
                     <option value="false">否</option>
                 </select>
             </div>
-            <div class="form-group">
+            <!-- <div class="form-group">
                 <label for="insecure">是否允许不安全的请求 (默认0)</label>
                 <input type="number" id="insecure" value="0">
+            </div> -->
+
+            <button id="download" onclick="sendRequest()">发送请求</button>
+        </div>
+        <button class="clearList" onclick="clearList()">清空列表</button>
+        <div>
+            <div>
+                <h2>下载列表</h2>
             </div>
 
-            <button onclick="sendRequest()">发送请求</button>
-        </div>
-        <div>
-            <h2>下载列表</h2>
             <div id="tasks">
             </div>
         </div>
@@ -243,6 +283,10 @@
         const downloadDir = localStorage.getItem('downloadDir')
         if (downloadDir) {
             document.getElementById('savePath').value = downloadDir
+        }
+        const proxy = localStorage.getItem('proxy')
+        if (proxy) {
+            document.getElementById('proxy').value = proxy
         }
 
         const displayMessage = (message, isSuccess = false) => {
@@ -260,16 +304,31 @@
             }, 5000);
         }
 
+        const clearList = async () => {
+            try {
+                const response = await fetch('/clearTasks', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                });
+                fetchTasks();
+            } catch (error) {
+            }
+        }
+
 
         async function sendRequest() {
             const url = document.getElementById('url').value;
             const threads = document.getElementById('threads').value;
-            const hostType = document.getElementById('hostType').value;
+            const hostType = 'v1' // document.getElementById('hostType').value ;
             const movieName = document.getElementById('movieName').value;
             const cookie = document.getElementById('cookie').value;
             const autoClear = document.getElementById('autoClear').value === 'true';
-            const insecure = document.getElementById('insecure').value;
+            const insecure = 0 // document.getElementById('insecure').value  ;
             const savePath = document.getElementById('savePath').value;
+            const referer = document.getElementById('referer').value;
+            const proxy = document.getElementById('proxy').value;
 
             if (!url) {
                 displayMessage('缺少下载链接')
@@ -283,8 +342,12 @@
                 displayMessage('请填写下载路径，下次会自动填充')
                 return
             }
-
+            localStorage.setItem('downloadDir', savePath)
+            if (proxy) {
+                localStorage.setItem('proxy', proxy)
+            }
             const data = {
+                proxy,
                 u: url,
                 n: parseInt(threads, 10),
                 ht: hostType,
@@ -292,7 +355,8 @@
                 c: cookie,
                 r: autoClear,
                 s: parseInt(insecure, 10),
-                sp: savePath
+                sp: savePath,
+                referer
             };
 
             try {
@@ -314,6 +378,49 @@
             }
         }
 
+        const createSelect = (id, masterPlaylists) => {
+            if (!masterPlaylists || masterPlaylists.length === 0) { return '' }
+            let options = '';
+            // 遍历masterPlaylists数组，为每个MasterPlaylist创建一个<option>元素
+            masterPlaylists.forEach(function (playlist) {
+                options = `${options}\n<option value="${playlist.url}">${playlist.resolution}</option>`
+            });
+            const selectElement = `<select id="playlist-select" style='width:200px'>${options}</select> <button id='retry' onclick='update(${id})'>重新下载</button>`
+            return selectElement
+        }
+
+        // 假设这是update方法，用于处理选项改变时的行为
+        const update = async (id) => {
+            const selectElement = document.getElementById('playlist-select');
+            const url = selectElement.value;
+            if (typeof id !== 'undefined' && url !== '') {
+                try {
+                    const response = await fetch('/updata', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ id, url })
+                    });
+
+                    const result = await response.json();
+                    displayMessage(result.status === 'success' ? '重新添加成功！' : `错误: ${result.error}`, result.status === 'success')
+                    document.getElementById(`task-${id}`).className = ''
+                    if (!timer) {
+                        timer = setInterval(() => {
+                            fetchTasks();
+                        }, 1000)
+                    }
+                } catch (error) {
+                    displayMessage(`添加下载任务失败: ${error.message}`)
+                }
+            }
+        }
+
+        const clearTimer = () => {
+            clearInterval(timer)
+            timer = null
+        }
 
 
         async function fetchTasks() {
@@ -323,15 +430,16 @@
                 const tasksContainer = document.getElementById('tasks');
                 tasksContainer.innerHTML = ''
                 if (!tasks || tasks && tasks.length === 0) {
-                    clearInterval(timer)
+                    clearTimer()
                     return
                 }
                 const haveNoFinish = tasks && tasks.find((item) => { return item.status === '下载中' })
                 if (!haveNoFinish) {
-                    clearInterval(timer)
+                    clearTimer()
                 }
                 tasks && tasks.forEach(task => {
                     const taskElement = document.createElement('div');
+                    taskElement.id = `task-${task.id}`;
                     taskElement.className = 'task';
                     taskElement.innerHTML = `
                         <div class='taskItem'>
@@ -339,17 +447,26 @@
                         </div>
                         <div class='taskItem'>
                             <span>TS数量: ${task.total_ts}</span>
-                            <span>已完成进度: ${task.completed * 100}%</span>
+                            <span>已完成进度: ${Math.round(task.completed * 100)}%</span>
                         </div>
                         <div class='taskItem'>
                             <span>状态: ${task.status}</span>
                             <span>耗时: ${Math.round(task.totalTime)}s</span>
                         </div>
                     `;
-                    if (task.message) {
+                    if (task.message && task.status !== '完成') {
                         taskElement.className = 'taskErr';
                         taskElement.innerHTML = `${taskElement.innerHTML}  <div class='taskItem'>错误信息: ${task.message}</div>`
                     }
+                    if (task.status === '暂停') {
+                        taskElement.className = 'taskErr';
+                        taskElement.innerHTML = `${taskElement.innerHTML}  <div class='taskItem'>播放列表: ${createSelect(task.id, task.master_list)}</div>`
+                    }
+                    if (task.status === '完成') {
+                        displayMessage(task.message, true)
+                    }
+
+
                     tasksContainer.appendChild(taskElement);
                 });
             } catch (error) {
@@ -357,9 +474,46 @@
             }
         }
 
-        // Initial fetch of tasks
         fetchTasks();
     </script>
 </body>
+<!-- const tasks = [
+                    {
+                        id: 1,
+                        url: 'https://www.bilibili.com/video/BV17K4y1M77Y',
+                        total_ts: 100,
+                        completed: 0.5,
+                        status: '暂停',
+                        message: '当前链接内有多个m3u8地址，请选择一个下载',
+                        masterPlaylists: [
+                            {
+                                url: 'https://www.bilibili.com/video/BV17K4y1M77Y',
+                                resolution: '1920*1080P'
+                            },
+                            {
+                                url: 'https://www.bilibili.com/video/BV17K4y1M77Y',
+                                resolution: '1920*1083P'
+                            }
+                        ]
+                    },
+                    {
+                        id: 1333,
+                        url: 'https://www.bilibili.com/video/BV17K4y1M77Y',
+                        total_ts: 100,
+                        completed: 0.5,
+                        status: '暂停',
+                        message: '当前链接内有多个m3u8地址，请选择一个下载',
+                        masterPlaylists: [
+                            {
+                                url: 'https://www.bilibili.com/video/BV17K4y1M77Y',
+                                resolution: '1920*1080P'
+                            },
+                            {
+                                url: 'https://www.bilibili.com/video/BV17K4y1M77Y',
+                                resolution: '1920*1083P'
+                            }
+                        ]
+                    }
+                ] -->
 
 </html>

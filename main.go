@@ -1,14 +1,13 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"embed"
 	"flag"
 	"fmt"
 	"log"
+	"m3u8-downloader/parse"
 	"net/http"
 	"net/url"
 	"os"
@@ -50,15 +49,9 @@ var (
 	}
 )
 
-// TsInfo 用于保存 ts 文件的下载地址和文件名
-type TsInfo struct {
-	Name string
-	Url  string
-}
-
 // 定义请求参数的结构体
 type DownloadRequest struct {
-	URLFlag string `json:"u" binding:"required"`
+	URL     string `json:"u" binding:"required"`
 	NFlag   *int   `json:"n"`
 	HTFlag  string `json:"ht"`
 	OFlag   string `json:"o" binding:"required"`
@@ -66,17 +59,27 @@ type DownloadRequest struct {
 	RFlag   *bool  `json:"r"`
 	SFlag   int    `json:"s"`
 	SPFlag  string `json:"sp"`
+	Referer string `json:"referer"`
+	Proxy   string `json:"proxy"`
+	Sync    bool   `json:"sync"`
+}
+
+type UpdataTask struct {
+	ID  int    `json:"id" binding:"required"`
+	URL string `json:"url" binding:"required"`
 }
 
 // Task represents a download task
 type Task struct {
-	ID        int     `json:"id"`
-	URL       string  `json:"url"`
-	Status    string  `json:"status"`
-	TotalTs   int     `json:"total_ts"`
-	Message   string  `json:"message"`
-	Completed float32 `json:"completed"`
-	TotalTime float64 `json:"totalTime"`
+	ID         int                     `json:"id"`
+	URL        string                  `json:"url"`
+	Status     string                  `json:"status"`
+	TotalTs    int                     `json:"total_ts"`
+	Message    string                  `json:"message"`
+	Completed  float32                 `json:"completed"`
+	TotalTime  float64                 `json:"totalTime"`
+	MasterList []*parse.MasterPlaylist `json:"master_list"`
+	TaskInfo   DownloadRequest         `json:"taskInfo"`
 }
 
 var (
@@ -94,7 +97,7 @@ func main() {
 			if errs, ok := err.(validator.ValidationErrors); ok {
 				// 遍历错误字段, 进行判断
 				for _, e := range errs {
-					if e.Field() == "URLFlag" && e.Tag() == "required" {
+					if e.Field() == "URL" && e.Tag() == "required" {
 						c.JSON(http.StatusBadRequest, gin.H{"error": "缺少下载链接"})
 						return
 					}
@@ -110,9 +113,19 @@ func main() {
 			}
 		}
 		// 校验 u 参数
-		if !strings.HasPrefix(req.URLFlag, "http") {
+		if !strings.HasPrefix(req.URL, "http") {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "下载链接格式错误"})
 			return
+		}
+		if req.Proxy != "" {
+			proxyURL, err := url.Parse(req.Proxy) // Proxy URL
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "代理地址错误"})
+				return
+			}
+			ro.Proxies = map[string]*url.URL{proxyURL.Scheme: proxyURL}
+		} else if req.Proxy == "" && ro.Proxies != nil {
+			ro.Proxies = nil
 		}
 
 		if req.HTFlag == "" {
@@ -132,20 +145,101 @@ func main() {
 		taskID++
 		newTask := Task{
 			ID:        taskID,
-			URL:       req.URLFlag,
+			URL:       req.URL,
 			Status:    "下载中",
 			TotalTs:   0, // 假设总共有 0 个 ts 文件
 			Completed: 0,
 			TotalTime: 0,
+			TaskInfo:  req,
 		}
 		tasks = append(tasks, newTask)
 		taskMux.Unlock()
-		go Run(newTask.ID, req.URLFlag, *(req.NFlag), req.HTFlag, req.OFlag, req.CFlag, *(req.RFlag), req.SFlag, req.SPFlag)
+		if req.Sync {
+			Run(newTask.ID, newTask.TaskInfo.URL,
+				*(newTask.TaskInfo.NFlag), newTask.TaskInfo.HTFlag,
+				newTask.TaskInfo.OFlag, newTask.TaskInfo.CFlag,
+				*(newTask.TaskInfo.RFlag), newTask.TaskInfo.SFlag,
+				newTask.TaskInfo.SPFlag, newTask.TaskInfo.Referer,
+			)
+		} else {
+			go Run(newTask.ID, newTask.TaskInfo.URL,
+				*(newTask.TaskInfo.NFlag), newTask.TaskInfo.HTFlag,
+				newTask.TaskInfo.OFlag, newTask.TaskInfo.CFlag,
+				*(newTask.TaskInfo.RFlag), newTask.TaskInfo.SFlag,
+				newTask.TaskInfo.SPFlag, newTask.TaskInfo.Referer,
+			)
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": "success", "taskID": newTask.ID})
+	})
+
+	r.POST("/updata", func(c *gin.Context) {
+		var req UpdataTask
+		if err := c.ShouldBindJSON(&req); err != nil {
+			if errs, ok := err.(validator.ValidationErrors); ok {
+				// 遍历错误字段, 进行判断
+				for _, e := range errs {
+					if e.Field() == "URL" && e.Tag() == "required" {
+						c.JSON(http.StatusBadRequest, gin.H{"error": "缺少下载链接"})
+						return
+					}
+					if e.Field() == "ID" && e.Tag() == "required" {
+						c.JSON(http.StatusBadRequest, gin.H{"error": "缺少对应的taskID"})
+						return
+					}
+				}
+			} else {
+				// 如果不是验证类型的错误，则原样返回
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+		}
+		// 校验 u 参数
+		if !strings.HasPrefix(req.URL, "http") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "下载链接格式错误"})
+			return
+		}
+
+		taskMux.Lock()
+		var newTask Task
+		for i := range tasks {
+			if tasks[i].ID == req.ID {
+				tasks[i].Status = "下载中"
+				tasks[i].URL = req.URL
+				tasks[i].TotalTs = 0
+				tasks[i].Completed = 0
+				tasks[i].TotalTime = 0
+				newTask = tasks[i]
+				break
+			}
+		}
+		taskMux.Unlock()
+		fmt.Println("newTask:", newTask)
+		go Run(newTask.ID, newTask.URL,
+			*(newTask.TaskInfo.NFlag), newTask.TaskInfo.HTFlag,
+			newTask.TaskInfo.OFlag, newTask.TaskInfo.CFlag,
+			*(newTask.TaskInfo.RFlag), newTask.TaskInfo.SFlag,
+			newTask.TaskInfo.SPFlag, newTask.TaskInfo.Referer,
+		)
 		c.JSON(http.StatusOK, gin.H{"status": "success", "taskID": newTask.ID})
 	})
 
 	r.GET("/tasks", func(c *gin.Context) {
 		c.JSON(http.StatusOK, tasks)
+	})
+
+	r.GET("/clearTasks", func(c *gin.Context) {
+		// 找到tasks中所有已经完成的任务，清除掉
+		taskMux.Lock()
+		var newTasks []Task
+		for i := range tasks {
+			if tasks[i].Status != "完成" {
+				newTasks = append(newTasks, tasks[i])
+			}
+		}
+		tasks = newTasks
+		taskMux.Unlock()
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
 	})
 
 	r.GET("/", func(c *gin.Context) {
@@ -161,11 +255,14 @@ func main() {
 	}
 }
 
-func Run(taskID int, m3u8Url string, maxGoroutines int, hostType string, movieName string, cookie string, autoClearFlag bool, insecure int, savePath string) {
+func Run(taskID int, m3u8Url string, maxGoroutines int, hostType string, movieName string, cookie string, autoClearFlag bool, insecure int, savePath string, referer string) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	now := time.Now()
-
-	ro.Headers["Referer"] = getHost(m3u8Url, "v2")
+	if referer != "" {
+		ro.Headers["Referer"] = referer
+	} else {
+		ro.Headers["Referer"] = getHost(m3u8Url, "v2")
+	}
 	if insecure != 0 {
 		ro.InsecureSkipVerify = true
 	}
@@ -185,7 +282,7 @@ func Run(taskID int, m3u8Url string, maxGoroutines int, hostType string, movieNa
 	}
 
 	// 2、解析m3u8
-	m3u8Host, m3u8Body, err := getM3u8Body(m3u8Url, hostType)
+	m3u8Body, err := getM3u8Body(m3u8Url, hostType)
 	if err != nil {
 		errorMsg := fmt.Sprintf("获取不到m3u8内容: %v", err)
 		for i := range tasks {
@@ -195,35 +292,50 @@ func Run(taskID int, m3u8Url string, maxGoroutines int, hostType string, movieNa
 				break
 			}
 		}
-
 		return
 	}
-	ts_key := getM3u8Key(m3u8Host, m3u8Body)
-	if ts_key != "" {
-		fmt.Printf("待解密 ts 文件 key : %s \n", ts_key)
-	}
-	ts_list := getTsList(m3u8Host, m3u8Body)
-	if len(ts_list) == 0 {
+	// 如果有masterplaylist则说明是有多层级的m3u8地址,返回让用户选择
+	if m3u8Body.MasterPlaylist != nil {
 		for i := range tasks {
 			if tasks[i].ID == taskID {
-				tasks[i].Status = "失败"
-				tasks[i].TotalTs = len(ts_list)
-				tasks[i].Message = "未解析到ts切片"
+				tasks[i].Status = "暂停"
+				tasks[i].Message = "当前链接内有多个m3u8地址，请选择一个下载"
+				tasks[i].MasterList = m3u8Body.MasterPlaylist
 				break
 			}
 		}
 		return
 	}
-	for i := range tasks {
-		if tasks[i].ID == taskID {
-			tasks[i].Status = "下载中"
-			tasks[i].TotalTs = len(ts_list)
-			break
+	// 将 keys 转换为 JSON 格式并打印出来
+
+	// 当存在keys时，则去请求加密数据
+	if len(m3u8Body.Keys) > 0 {
+		getM3u8Key(m3u8Body)
+	}
+
+	// 如果segmentlist为空，则表示没解析到ts，直接报错,不为空的则更新task
+	if len(m3u8Body.Segments) == 0 {
+		for i := range tasks {
+			if tasks[i].ID == taskID {
+				tasks[i].Status = "失败"
+				tasks[i].TotalTs = 0
+				tasks[i].Message = "未解析到ts切片"
+				break
+			}
+		}
+		return
+	} else {
+		for i := range tasks {
+			if tasks[i].ID == taskID {
+				tasks[i].Status = "下载中"
+				tasks[i].TotalTs = len(m3u8Body.Segments)
+				break
+			}
 		}
 	}
 
 	// 3、下载ts文件到download_dir
-	downloader(taskID, ts_list, maxGoroutines, download_dir, ts_key)
+	downloader(taskID, m3u8Body.Segments, maxGoroutines, download_dir, m3u8Body.Keys)
 	if ok := checkTsDownDir(download_dir); !ok {
 		for i := range tasks {
 			if tasks[i].ID == taskID {
@@ -236,7 +348,17 @@ func Run(taskID int, m3u8Url string, maxGoroutines int, hostType string, movieNa
 	}
 
 	// 4、合并ts切割文件成mp4文件
-	mergeTs(download_dir)
+	mp4Path, err := parse.MergeTs(download_dir)
+	if err != nil {
+		for i := range tasks {
+			if tasks[i].ID == taskID {
+				tasks[i].Status = "失败"
+				tasks[i].TotalTime = time.Since(now).Seconds()
+				tasks[i].Message = fmt.Sprintf("合并切片失败: %s", err.Error())
+				break
+			}
+		}
+	}
 	if autoClearFlag {
 		//自动清除ts文件目录
 		os.RemoveAll(download_dir)
@@ -247,7 +369,8 @@ func Run(taskID int, m3u8Url string, maxGoroutines int, hostType string, movieNa
 		if tasks[i].ID == taskID {
 			tasks[i].Status = "完成"
 			tasks[i].Completed = 1
-			tasks[i].TotalTime = time.Now().Sub(now).Seconds()
+			tasks[i].TotalTime = time.Since(now).Seconds()
+			tasks[i].Message = "下载成功：" + mp4Path
 			break
 		}
 	}
@@ -267,75 +390,67 @@ func getHost(Url, ht string) (host string) {
 }
 
 // 获取m3u8地址的内容体
-func getM3u8Body(Url string, ht string) (string, string, error) {
+func getM3u8Body(Url string, ht string) (*parse.M3u8, error) {
 	r, err := grequests.Get(Url, ro)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
+	defer r.Close() // 确保关闭响应体
 	host := getHost(Url, ht)
 	bodyString := r.String()
 	lines := strings.Split(bodyString, "\n")
-	for _, line := range lines {
-		if !strings.HasPrefix(line, "#") && line != "" && strings.HasSuffix(line, "m3u8") {
-			//嵌套格式的m3u8,
-			fmt.Print("real==", host+"/"+line)
-			return getM3u8Body(host+"/"+line, ht)
-		}
+	if lines[0] != "#EXTM3U" {
+		return nil, fmt.Errorf(r.String())
 	}
-	return host, r.String(), nil
+
+	m3u8, parseErr := parse.Parse(lines, host)
+	return m3u8, parseErr
 }
 
 // 获取m3u8加密的密钥
-func getM3u8Key(host, html string) (key string) {
-	lines := strings.Split(html, "\n")
-	key = ""
-	for _, line := range lines {
-		if strings.Contains(line, "#EXT-X-KEY") {
-			uri_pos := strings.Index(line, "URI")
-			quotation_mark_pos := strings.LastIndex(line, "\"")
-			key_url := strings.Split(line[uri_pos:quotation_mark_pos], "\"")[1]
-			if !strings.Contains(line, "http") {
-				key_url = fmt.Sprintf("%s/%s", host, key_url)
-			}
-			res, err := grequests.Get(key_url, ro)
+func getM3u8Key(m3u8Body *parse.M3u8) {
+	// 循环Keys，根据里面的URI，发送请求，如果成功，则更新到KeyBody字段
+	for _, key := range m3u8Body.Keys {
+		if key.Method != "" && key.Method != parse.CryptMethodNONE {
+			res, err := grequests.Get(key.URI, ro) // 直接使用key.URI
 			checkErr(err)
 			if res.StatusCode == 200 {
-				key = res.String()
+				key.KeyBody = res.String()
 			}
 		}
 	}
-	return
 }
 
-func getTsList(host, body string) (tsList []TsInfo) {
-	lines := strings.Split(body, "\n")
-	index := 0
-	var ts TsInfo
-	for _, line := range lines {
-		if !strings.HasPrefix(line, "#") && line != "" && strings.Contains(line, "ts") {
-			//有可能出现的二级嵌套格式的m3u8,请自行转换！
-			index++
-			if strings.HasPrefix(line, "http") {
-				ts = TsInfo{
-					Name: fmt.Sprintf(TS_NAME_TEMPLATE, index),
-					Url:  line,
+// downloader m3u8 下载器
+func downloader(taskID int, tsList []*parse.Segment, maxGoroutines int, downloadDir string, keys map[int]*parse.Key) {
+	retry := 5 //单个 ts 下载重试次数
+	var wg sync.WaitGroup
+	limiter := make(chan struct{}, maxGoroutines) //chan struct 内存占用 0 bool 占用 1
+	tsLen := len(tsList)
+	downloadCount := 0
+	for _, ts := range tsList {
+		wg.Add(1)
+		limiter <- struct{}{}
+		go func(ts *parse.Segment, downloadDir string, key *parse.Key, retryies int) {
+			defer func() {
+				wg.Done()
+				<-limiter
+			}()
+			downloadTsFile(ts, downloadDir, key, retryies)
+			downloadCount++
+			for i := range tasks {
+				if tasks[i].ID == taskID {
+					tasks[i].Completed = float32(downloadCount) / float32(tsLen)
+					break
 				}
-				tsList = append(tsList, ts)
-			} else {
-				ts = TsInfo{
-					Name: fmt.Sprintf(TS_NAME_TEMPLATE, index),
-					Url:  fmt.Sprintf("%s/%s", host, line),
-				}
-				tsList = append(tsList, ts)
 			}
-		}
+		}(ts, downloadDir, keys[ts.KeyIndex], retry)
 	}
-	return
+	wg.Wait()
 }
 
 // 下载ts文件
-// @modify: 2020-08-13 修复ts格式SyncByte合并不能播放问题
-func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
+func downloadTsFile(ts *parse.Segment, download_dir string, key *parse.Key, retries int) {
 	defer func() {
 		if r := recover(); r != nil {
 			downloadTsFile(ts, download_dir, key, retries-1)
@@ -345,7 +460,7 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	if isExist, _ := pathExists(curr_path_file); isExist {
 		return
 	}
-	res, err := grequests.Get(ts.Url, ro)
+	res, err := grequests.Get(ts.URI, ro)
 	if err != nil || !res.Ok {
 		if retries > 0 {
 			downloadTsFile(ts, download_dir, key, retries-1)
@@ -367,9 +482,9 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 		return
 	}
 	// 解密出视频 ts 源文件
-	if key != "" {
+	if key != nil && key.Method != parse.CryptMethodNONE && key.Method != "" {
 		//解密 ts 文件，算法：aes 128 cbc pack5
-		origData, err = AesDecrypt(origData, []byte(key))
+		origData, err = AesDecrypt(origData, []byte(key.KeyBody), []byte(key.IV))
 		if err != nil {
 			downloadTsFile(ts, download_dir, key, retries-1)
 			return
@@ -389,62 +504,11 @@ func downloadTsFile(ts TsInfo, download_dir, key string, retries int) {
 	os.WriteFile(curr_path_file, origData, 0666)
 }
 
-// downloader m3u8 下载器
-func downloader(taskID int, tsList []TsInfo, maxGoroutines int, downloadDir string, key string) {
-	retry := 5 //单个 ts 下载重试次数
-	var wg sync.WaitGroup
-	limiter := make(chan struct{}, maxGoroutines) //chan struct 内存占用 0 bool 占用 1
-	tsLen := len(tsList)
-	downloadCount := 0
-	for _, ts := range tsList {
-		wg.Add(1)
-		limiter <- struct{}{}
-		go func(ts TsInfo, downloadDir, key string, retryies int) {
-			defer func() {
-				wg.Done()
-				<-limiter
-			}()
-			downloadTsFile(ts, downloadDir, key, retryies)
-			downloadCount++
-			for i := range tasks {
-				if tasks[i].ID == taskID {
-					tasks[i].Completed = float32(downloadCount) / float32(tsLen)
-					break
-				}
-			}
-			return
-		}(ts, downloadDir, key, retry)
-	}
-	wg.Wait()
-}
-
 func checkTsDownDir(dir string) bool {
 	if isExist, _ := pathExists(filepath.Join(dir, fmt.Sprintf(TS_NAME_TEMPLATE, 0))); !isExist {
 		return true
 	}
 	return false
-}
-
-// 合并ts文件
-func mergeTs(downloadDir string) string {
-	mvName := downloadDir + ".mp4"
-	outMv, _ := os.Create(mvName)
-	defer outMv.Close()
-	writer := bufio.NewWriter(outMv)
-	err := filepath.Walk(downloadDir, func(path string, f os.FileInfo, err error) error {
-		if f == nil {
-			return err
-		}
-		if f.IsDir() || filepath.Ext(path) != ".ts" {
-			return nil
-		}
-		bytes, _ := os.ReadFile(path)
-		_, err = writer.Write(bytes)
-		return err
-	})
-	checkErr(err)
-	_ = writer.Flush()
-	return mvName
 }
 
 // ============================== shell相关 ==============================
@@ -462,53 +526,25 @@ func pathExists(path string) (bool, error) {
 
 // ============================== 加解密相关 ==============================
 
-func PKCS7Padding(ciphertext []byte, blockSize int) []byte {
-	padding := blockSize - len(ciphertext)%blockSize
-	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
-	return append(ciphertext, padtext...)
-}
-
-func PKCS7UnPadding(origData []byte) []byte {
+func PKCS5UnPadding(origData []byte) []byte {
 	length := len(origData)
 	unpadding := int(origData[length-1])
 	return origData[:(length - unpadding)]
 }
 
-func AesEncrypt(origData, key []byte, ivs ...[]byte) ([]byte, error) {
+func AesDecrypt(crypted, key []byte, iv []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
 	blockSize := block.BlockSize()
-	var iv []byte
-	if len(ivs) == 0 {
+	if len(iv) == 0 {
 		iv = key
-	} else {
-		iv = ivs[0]
-	}
-	origData = PKCS7Padding(origData, blockSize)
-	blockMode := cipher.NewCBCEncrypter(block, iv[:blockSize])
-	crypted := make([]byte, len(origData))
-	blockMode.CryptBlocks(crypted, origData)
-	return crypted, nil
-}
-
-func AesDecrypt(crypted, key []byte, ivs ...[]byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	blockSize := block.BlockSize()
-	var iv []byte
-	if len(ivs) == 0 {
-		iv = key
-	} else {
-		iv = ivs[0]
 	}
 	blockMode := cipher.NewCBCDecrypter(block, iv[:blockSize])
 	origData := make([]byte, len(crypted))
 	blockMode.CryptBlocks(origData, crypted)
-	origData = PKCS7UnPadding(origData)
+	origData = PKCS5UnPadding(origData)
 	return origData, nil
 }
 

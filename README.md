@@ -1,12 +1,17 @@
 # m3u8下载器GUI版本
 
-fork自开源项目 [m3u8-downloader](https://github.com/llychao/m3u8-downloader)，为了方便放到服务器上跑，做了一个http服务及页面
+主要参考以下两个开源项目
+[m3u8-downloader](https://github.com/llychao/m3u8-downloader)
+[m3u8](https://github.com/oopsguy/m3u8/tree/master)
+
+为了方便放到服务器上跑及其他程序调用，改造成http服务。
+支持通过简易页面进行添加任务，支持通过接口供其他服务调用。
 
 ![gui](./gui.png)
 
 ## 功能介绍
 
-1. 支持下载多层m3u8地址（目前只测试了二层只有一个链接的）
+1. 支持下载多层m3u8地址（需要用户手动选择需要下载的分辨率）
 2. 支持GUI，有个简单的页面，方便直接添加任务
 3. 支持自定义端口，默认启动在10000端口上，如果想自定义端口启动，可在后面加 -port=端口号
 
